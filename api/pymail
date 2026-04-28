@@ -1,0 +1,46 @@
+from http.server import BaseHTTPRequestHandler
+import json
+import smtplib
+import os
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
+            
+            recipient = data.get('address')
+            body = data.get('body')
+            
+            # Read credentials securely from Vercel Environment Variables
+            sender_email = os.environ.get('SENDER_EMAIL')
+            sender_password = os.environ.get('SENDER_PASSWORD')
+            
+            if not sender_email or not sender_password:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "Server credentials not configured. Please set SENDER_EMAIL and SENDER_PASSWORD in Vercel Environment Variables."
+                }).encode('utf-8'))
+                return
+
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            
+            # Format message to prevent it going straight to spam
+            message = f"Subject: Message from Python App\n\n{body}"
+            server.sendmail(sender_email, recipient, message)
+            server.quit()
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"message": "Email sent successfully!"}).encode('utf-8'))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
